@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@tailwindcss/oxide-darwin-arm64": "^4.2.1",
     "@upstash/redis": "^1.36.3",
     "autoprefixer": "^10.4.27",
     "next": "16.1.6",
