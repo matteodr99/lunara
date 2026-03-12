@@ -8,6 +8,7 @@
 ![Stack](https://img.shields.io/badge/Charts-Recharts-22B5BF?style=flat-square)
 ![Stack](https://img.shields.io/badge/Deploy-Vercel-000000?style=flat-square)
 ![Stack](https://img.shields.io/badge/Tests-Jest-C21325?style=flat-square)
+![CI](https://github.com/matteodr99/lunara/actions/workflows/ci.yml/badge.svg)
 
 ---
 
@@ -19,6 +20,7 @@
 - **Market Stats** — Market cap, 24h volume, and 24h price change for each coin
 - **Glassmorphism UI** — Animated background orbs, frosted glass panels, smooth transitions
 - **Unit Tested** — Jest test suite covering formatting utilities and API logic
+- **CI/CD** — GitHub Actions automatically runs tests on every push and pull request
 
 ---
 
@@ -31,6 +33,7 @@
 - **[CoinGecko API](https://www.coingecko.com/en/api)** — Free cryptocurrency market data
 - **[Tailwind CSS](https://tailwindcss.com/)** — Utility-first styling
 - **[Jest](https://jestjs.io/)** + **[React Testing Library](https://testing-library.com/)** — Unit testing
+- **[GitHub Actions](https://github.com/features/actions)** — CI/CD pipeline
 - **[Vercel](https://vercel.com/)** — Deployment
 
 ---
@@ -39,6 +42,9 @@
 
 ```
 lunara/
+├── .github/
+│   └── workflows/
+│       └── ci.yml            # CI/CD pipeline
 ├── app/
 │   ├── api/
 │   │   └── crypto/
@@ -117,6 +123,8 @@ PASS  __tests__/coingecko.test.ts
 Tests: 7 passed
 ```
 
+Tests run automatically on every push and pull request via **GitHub Actions**.
+
 ---
 
 ## 🔄 How Caching Works
@@ -160,6 +168,17 @@ Returns the top 10 cryptocurrencies by market cap.
 
 ---
 
+## 🔁 CI/CD Pipeline
+
+Every push and pull request to `main` triggers the GitHub Actions workflow which:
+
+1. Sets up Node.js 20
+2. Installs frontend dependencies
+3. Runs all unit tests with Jest
+4. Reports pass/fail status directly on the commit and pull request
+
+---
+
 ## 🚢 Production Deployment
 
 ### Vercel
@@ -180,7 +199,7 @@ Returns the top 10 cryptocurrencies by market cap.
 - [ ] Price alerts and notifications
 - [ ] Multiple timeframes (1D, 7D, 30D, 1Y)
 - [ ] Currency switcher (USD, EUR, GBP)
-- [ ] CI/CD with GitHub Actions
+- [ ] Integration tests
 
 ---
 
