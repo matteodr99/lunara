@@ -9,17 +9,40 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { CryptoData, formatPrice, formatMarketCap } from "@/lib/coingecko";
+import {
+  buildSparklineHistory,
+  CURRENCY_CONFIG,
+  CryptoData,
+  formatPrice,
+  formatMarketCap,
+  formatTimeframeLabel,
+  type CryptoHistoryPoint,
+  type CryptoTimeframe,
+  type SupportedCurrency,
+} from "@/lib/coingecko";
+import {
+  filterCryptocurrencies,
+  type CryptoTrendFilter,
+} from "@/lib/crypto-filters";
+
+const TIMEFRAMES: CryptoTimeframe[] = ["1D", "7D", "30D", "1Y"];
+const CURRENCIES: SupportedCurrency[] = ["usd", "eur", "gbp"];
 
 export default function Home() {
   const [cryptos, setCryptos] = useState<CryptoData[]>([]);
   const [selected, setSelected] = useState<CryptoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [trendFilter, setTrendFilter] = useState<CryptoTrendFilter>("all");
+  const [timeframe, setTimeframe] = useState<CryptoTimeframe>("7D");
+  const [currency, setCurrency] = useState<SupportedCurrency>("usd");
+  const [chartHistory, setChartHistory] = useState<CryptoHistoryPoint[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch("/api/crypto");
+      const res = await fetch(`/api/crypto?currency=${currency}`);
       const json = await res.json();
       const data: CryptoData[] =
         typeof json.data === "string" ? JSON.parse(json.data) : json.data;
@@ -33,7 +56,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currency]);
 
   useEffect(() => {
     fetchData();
@@ -41,13 +64,76 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const sparklineData = selected?.sparkline_in_7d?.price
-    ? selected.sparkline_in_7d.price
-        .filter((_, i) => i % 6 === 0)
-        .map((price, i) => ({ i, price }))
-    : [];
+  const filteredCryptos = filterCryptocurrencies(
+    cryptos,
+    searchQuery,
+    trendFilter,
+  );
+
+  useEffect(() => {
+    if (filteredCryptos.length === 0) {
+      return;
+    }
+
+    const selectedStillVisible = filteredCryptos.some(
+      (coin) => coin.id === selected?.id,
+    );
+
+    if (!selectedStillVisible) {
+      setSelected(filteredCryptos[0]);
+    }
+  }, [filteredCryptos, selected]);
+
+  const fetchChartHistory = useCallback(async () => {
+    if (!selected) {
+      setChartHistory([]);
+      return;
+    }
+
+    if (timeframe === "7D" && selected.sparkline_in_7d?.price?.length) {
+      setChartHistory(buildSparklineHistory(selected.sparkline_in_7d.price, "7D"));
+      return;
+    }
+
+    setChartLoading(true);
+    try {
+      const res = await fetch(
+        `/api/crypto/history?coin=${selected.id}&timeframe=${timeframe}&currency=${currency}`,
+      );
+      const json = await res.json();
+      const data: CryptoHistoryPoint[] =
+        typeof json.data === "string" ? JSON.parse(json.data) : json.data;
+      setChartHistory(data);
+    } catch (e) {
+      console.error(e);
+      setChartHistory([]);
+    } finally {
+      setChartLoading(false);
+    }
+  }, [currency, selected, timeframe]);
+
+  useEffect(() => {
+    fetchChartHistory();
+  }, [fetchChartHistory]);
+
+  const chartData = chartHistory
+    .filter((_, index) => {
+      if (timeframe === "1D") return index % 2 === 0;
+      if (timeframe === "1Y") return index % 8 === 0;
+      return index % 4 === 0;
+    })
+    .map((point, index) => ({
+      i: index,
+      timestamp: point.timestamp,
+      price: point.price,
+      label: formatTimeframeLabel(point.timestamp, timeframe),
+    }));
 
   const isPositive = (selected?.price_change_percentage_24h ?? 0) >= 0;
+  const chartIsPositive =
+    chartData.length < 2 ||
+    chartData[chartData.length - 1].price >= chartData[0].price;
+  const currencyLabel = CURRENCY_CONFIG[currency].label;
 
   return (
     <main
@@ -122,6 +208,71 @@ export default function Home() {
           padding: 16px 20px;
           flex: 1;
         }
+
+        .filter-button {
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.04);
+          color: rgba(255,255,255,0.7);
+          border-radius: 999px;
+          padding: 8px 12px;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .filter-button:hover {
+          background: rgba(255,255,255,0.1);
+          color: #fff;
+        }
+        .filter-button.active {
+          background: rgba(167,139,250,0.16);
+          color: #c4b5fd;
+          border-color: rgba(167,139,250,0.35);
+          box-shadow: 0 0 20px rgba(167,139,250,0.12);
+        }
+
+        .timeframe-button {
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.03);
+          color: rgba(255,255,255,0.58);
+          border-radius: 999px;
+          padding: 7px 11px;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .timeframe-button.active {
+          background: rgba(96,165,250,0.18);
+          color: #bfdbfe;
+          border-color: rgba(96,165,250,0.35);
+        }
+
+        .currency-button {
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.04);
+          color: rgba(255,255,255,0.72);
+          border-radius: 999px;
+          padding: 8px 12px;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .currency-button.active {
+          background: rgba(74,222,128,0.16);
+          color: #bbf7d0;
+          border-color: rgba(74,222,128,0.35);
+        }
+
+        @media (max-width: 960px) {
+          .dashboard-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
       `}</style>
 
       {/* Background orbs */}
@@ -176,7 +327,29 @@ export default function Home() {
             / crypto dashboard
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "16px",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+          }}
+        >
+          <div
+            style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}
+          >
+            {CURRENCIES.map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={`currency-button ${currency === value ? "active" : ""}`}
+                onClick={() => setCurrency(value)}
+              >
+                {CURRENCY_CONFIG[value].label}
+              </button>
+            ))}
+          </div>
           {lastUpdate && (
             <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "11px" }}>
               updated {lastUpdate.toLocaleTimeString()}
@@ -227,6 +400,7 @@ export default function Home() {
         </div>
       ) : (
         <div
+          className="dashboard-grid"
           style={{
             maxWidth: "1100px",
             margin: "0 auto",
@@ -317,7 +491,7 @@ export default function Home() {
                             letterSpacing: "-0.02em",
                           }}
                         >
-                          {formatPrice(selected.current_price)}
+                          {formatPrice(selected.current_price, currency)}
                         </span>
                         <span
                           style={{
@@ -362,7 +536,7 @@ export default function Home() {
                         MARKET CAP
                       </div>
                       <div style={{ fontSize: "15px", fontWeight: 600 }}>
-                        {formatMarketCap(selected.market_cap)}
+                        {formatMarketCap(selected.market_cap, currency)}
                       </div>
                     </div>
                     <div className="stat-card">
@@ -377,7 +551,7 @@ export default function Home() {
                         24H VOLUME
                       </div>
                       <div style={{ fontSize: "15px", fontWeight: 600 }}>
-                        {formatMarketCap(selected.total_volume)}
+                        {formatMarketCap(selected.total_volume, currency)}
                       </div>
                     </div>
                     <div className="stat-card">
@@ -405,61 +579,117 @@ export default function Home() {
                   </div>
 
                   {/* Chart */}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "12px",
+                      marginBottom: "16px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        letterSpacing: "0.1em",
+                        color: "rgba(255,255,255,0.38)",
+                      }}
+                    >
+                      MULTIPLE TIMEFRAMES
+                    </span>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      {TIMEFRAMES.map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={`timeframe-button ${timeframe === value ? "active" : ""}`}
+                          onClick={() => setTimeframe(value)}
+                        >
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div style={{ height: "180px" }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={sparklineData}>
-                        <defs>
-                          <linearGradient
-                            id="lineGradient"
-                            x1="0"
-                            y1="0"
-                            x2="1"
-                            y2="0"
-                          >
-                            <stop
-                              offset="0%"
-                              stopColor={isPositive ? "#4ade80" : "#f87171"}
-                              stopOpacity={0.5}
-                            />
-                            <stop
-                              offset="100%"
-                              stopColor={isPositive ? "#4ade80" : "#f87171"}
-                              stopOpacity={1}
-                            />
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="i" hide />
-                        <YAxis domain={["auto", "auto"]} hide />
-                        <Tooltip
-                          contentStyle={{
-                            background: "rgba(15,12,41,0.9)",
-                            border: "1px solid rgba(255,255,255,0.1)",
-                            borderRadius: "10px",
-                            fontSize: "12px",
-                            fontFamily: "'Inter', sans-serif",
-                            color: "#fff",
-                          }}
-                          formatter={(value: number | undefined) => [
-                            value !== undefined ? formatPrice(value) : "-",
-                            "Price",
-                          ]}
-                          labelFormatter={() => ""}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="price"
-                          stroke="url(#lineGradient)"
-                          strokeWidth={2.5}
-                          dot={false}
-                          activeDot={{
-                            r: 5,
-                            fill: isPositive ? "#4ade80" : "#f87171",
-                            stroke: "rgba(255,255,255,0.3)",
-                            strokeWidth: 2,
-                          }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    {chartLoading ? (
+                      <div
+                        style={{
+                          height: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "rgba(255,255,255,0.45)",
+                          fontSize: "12px",
+                          letterSpacing: "0.08em",
+                        }}
+                      >
+                        LOADING {timeframe} HISTORY...
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData}>
+                          <defs>
+                            <linearGradient
+                              id="lineGradient"
+                              x1="0"
+                              y1="0"
+                              x2="1"
+                              y2="0"
+                            >
+                              <stop
+                                offset="0%"
+                                stopColor={
+                                  chartIsPositive ? "#4ade80" : "#f87171"
+                                }
+                                stopOpacity={0.5}
+                              />
+                              <stop
+                                offset="100%"
+                                stopColor={
+                                  chartIsPositive ? "#4ade80" : "#f87171"
+                                }
+                                stopOpacity={1}
+                              />
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="i" hide />
+                          <YAxis domain={["auto", "auto"]} hide />
+                          <Tooltip
+                            contentStyle={{
+                              background: "rgba(15,12,41,0.9)",
+                              border: "1px solid rgba(255,255,255,0.1)",
+                              borderRadius: "10px",
+                              fontSize: "12px",
+                              fontFamily: "'Inter', sans-serif",
+                              color: "#fff",
+                            }}
+                            formatter={(value: number | undefined) => [
+                              value !== undefined
+                                ? formatPrice(value, currency)
+                                : "-",
+                              "Price",
+                            ]}
+                            labelFormatter={(_, payload) =>
+                              payload?.[0]?.payload?.label ?? ""
+                            }
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="price"
+                            stroke="url(#lineGradient)"
+                            strokeWidth={2.5}
+                            dot={false}
+                            activeDot={{
+                              r: 5,
+                              fill: chartIsPositive ? "#4ade80" : "#f87171",
+                              stroke: "rgba(255,255,255,0.3)",
+                              strokeWidth: 2,
+                            }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    )}
                   </div>
                   <div
                     style={{
@@ -470,7 +700,7 @@ export default function Home() {
                       letterSpacing: "0.08em",
                     }}
                   >
-                    7-DAY PRICE HISTORY
+                    {timeframe} PRICE HISTORY / {currencyLabel}
                   </div>
                 </div>
               </>
@@ -493,17 +723,31 @@ export default function Home() {
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
+                gap: "12px",
+                flexWrap: "wrap",
               }}
             >
-              <span
-                style={{
-                  fontSize: "11px",
-                  color: "rgba(255,255,255,0.4)",
-                  letterSpacing: "0.1em",
-                }}
-              >
-                TOP 10
-              </span>
+              <div>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "rgba(255,255,255,0.4)",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  MARKET OVERVIEW
+                </span>
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "rgba(255,255,255,0.35)",
+                    letterSpacing: "0.05em",
+                    marginTop: "4px",
+                  }}
+                >
+                  {filteredCryptos.length} of {cryptos.length} visible
+                </div>
+              </div>
               <span
                 style={{
                   fontSize: "11px",
@@ -511,11 +755,66 @@ export default function Home() {
                   letterSpacing: "0.05em",
                 }}
               >
-                BY MARKET CAP
+                SEARCH + FILTER / {currencyLabel}
               </span>
             </div>
+            <div
+              style={{
+                padding: "16px 20px",
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+              }}
+            >
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search by name or symbol"
+                aria-label="Search cryptocurrencies"
+                style={{
+                  width: "100%",
+                  borderRadius: "12px",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.05)",
+                  color: "#fff",
+                  padding: "12px 14px",
+                  outline: "none",
+                  fontSize: "13px",
+                }}
+              />
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                {[
+                  ["all", "All"],
+                  ["gainers", "Gainers"],
+                  ["losers", "Losers"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`filter-button ${trendFilter === value ? "active" : ""}`}
+                    onClick={() => setTrendFilter(value as CryptoTrendFilter)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div style={{ overflowY: "auto", maxHeight: "520px" }}>
-              {cryptos.map((coin) => {
+              {filteredCryptos.length === 0 && (
+                <div
+                  style={{
+                    padding: "28px 20px",
+                    color: "rgba(255,255,255,0.45)",
+                    fontSize: "13px",
+                    textAlign: "center",
+                  }}
+                >
+                  No cryptocurrencies match the current search and filter.
+                </div>
+              )}
+              {filteredCryptos.map((coin) => {
                 const positive = coin.price_change_percentage_24h >= 0;
                 const isActive = selected?.id === coin.id;
                 return (
@@ -570,7 +869,7 @@ export default function Home() {
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontSize: "13px", fontWeight: 600 }}>
-                        {formatPrice(coin.current_price)}
+                        {formatPrice(coin.current_price, currency)}
                       </div>
                       <div
                         style={{

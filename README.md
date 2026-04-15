@@ -194,12 +194,8 @@ Every push and pull request to `main` triggers the GitHub Actions workflow which
 
 ## 🔮 Roadmap
 
-- [ ] Search and filter cryptocurrencies
 - [ ] Portfolio tracker with custom watchlist
 - [ ] Price alerts and notifications
-- [ ] Multiple timeframes (1D, 7D, 30D, 1Y)
-- [ ] Currency switcher (USD, EUR, GBP)
-- [ ] Integration tests
 
 ---
 
